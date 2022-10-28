@@ -11,7 +11,7 @@ file (GLOB_RECURSE httpparser-src CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*
 
 add_subdirectory(dependencies/pcre2)
 
-add_executable(HttpParser main.c ${httpparser-src})
-#add_library(HttpParser STATIC ${httpparser-src})
+#add_executable(HttpParser main.c ${httpparser-src})
+add_library(HttpParser STATIC ${httpparser-src})
 target_compile_definitions(HttpParser PUBLIC PCRE2_STATIC PCRE2_CODE_UNIT_WIDTH=8)
 target_link_libraries(HttpParser pcre2-8-static)
