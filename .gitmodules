@@ -1,0 +1,3 @@
+[submodule "dependencies/pcre2"]
+	path = dependencies/pcre2
+	url = https://github.com/PCRE2Project/pcre2
