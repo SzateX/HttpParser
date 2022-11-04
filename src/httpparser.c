@@ -43,18 +43,16 @@
 #define pct_encoded "%[" HEXDIG "]{2}"
 #define reg_name "(?'reg_name'(?>(?:[" unreserved sub_delims "]++|" pct_encoded ")*))"
 
-#define host "(?'host'" IP_literal "|(?'IPv4address'" IPv4address ")|" reg_name ")"
+#define uri_rule_host "(?'host'" IP_literal "|(?'IPv4address'" IPv4address ")|" reg_name ")"
 #define userInfo "(?'userinfo'(?>(?:[" unreserved sub_delims ":]++|" pct_encoded ")*))"
-#define authority "(?'authority'(?:" userInfo "@)?" host "(?::" port ")?)"
+#define authority "(?'authority'(?:" userInfo "@)?" uri_rule_host "(?::" port ")?)"
 
 #define pchar "[" unreserved sub_delims ":@]++|" pct_encoded
 #define segment "(?>(?:" pchar ")*)"
 #define segment_nz "(?>(?:" pchar ")+)"
-#define segment_nz_nc "(?>([" unreserved sub_delims "@]++|$encoded)+)"
 
 #define path_abempty "(?'path_abempty'(?:\\/" segment ")*)"
 #define path_absolute "(?'path_absolute'\\/(?:" segment_nz "(?:\\/" segment ")*)?)"
-#define path_noscheme "(?'path_noscheme'" segment_nz_nc "(?:\\/" segment ")*)"
 #define path_rootless "(?'path_rootless'" segment_nz "(?:\\/" segment ")*)"
 #define path_empty "(?'path_empty')"
 
@@ -64,42 +62,45 @@
 #define hier_part "(?'hier_part'\\/\\/" authority path_abempty "|" path_absolute "|" path_rootless "|" path_empty ")"
 #define absolute_URI "(?'absolute_URI'" scheme ":" hier_part "(?:\\?" query ")?(?:\\#" fragment ")?)"
 
-//RFC 7230
-#define obs_text "\\x80-\\xFF"
+//RFC 9112
+#define OWS "(?:[ \\t]*+)"
 #define tchar DIGIT ALPHA "!#$%&'*+-.^_`|~"
+#define obs_text "\\x80-\\xFF"
+#define absolute_path "(?'absolute_path'(?:\\/" segment ")++)"
+#define token "(?:[" tchar "]++)"
+#define field_name "(?'field_name'" token ")"
+
+#define field_vchar VCHAR obs_text
+#define field_content "(?:[" field_vchar "](?:[ \\t" field_vchar "]+[" field_vchar "])?)"
+#define field_value "(?'field_value'" field_content "*)"
+
+//RFC 9110
 
 #define HTTP_version "(?'http_version'HTTP\\/(?'http_version_major'[" DIGIT "])\\.(?'http_version_minor'[" DIGIT "]))"
 #define status_code "(?'status_code'[" DIGIT "]{3})"
-#define reason_phrase "(?'reason_phrase'(?:\t| |[" VCHAR "]|[" obs_text "])*+)"
-#define status_line "(?'status_line'" HTTP_version " " status_code " " reason_phrase CRLF ")"
+#define reason_phrase "(?'reason_phrase'(?:\t| |[" VCHAR "]|[" obs_text "])++)"
+#define status_line "(?'status_line'" HTTP_version " " status_code " " reason_phrase "?)"
 
-#define token "(?:[" tchar "]++)"
 #define http_rule_method "(?'method'" token ")"
-
-#define absolute_path "(?'absolute_path'(?:\\/" segment ")++)"
 
 #define origin_form "(?'origin_form'" absolute_path "(?:[?]" query")?)"
 #define absolute_form "(?'absolute_form'" absolute_URI ")"
-#define authority_form "(?'authority_form'" authority ")"
+
+#define authority_form "(?'authority_form'" uri_rule_host ":" port ")"
 #define asterix_form "(?'asterix_form'[*])"
 
 #define request_target "(?'request_target'" origin_form "|" absolute_form "|" authority_form "|" asterix_form ")"
 
-#define request_line "(?'request_line'" http_rule_method " " request_target " " HTTP_version CRLF ")"
+#define request_line "(?'request_line'" http_rule_method " " request_target " " HTTP_version ")"
 
 #define start_line "(?'start_line'" request_line "|" status_line ")"
 
-#define OWS "(?:[ \\t]*+)"
-#define field_name "(?'field_name'" token ")"
+#define field_line "(?:" field_name ":" OWS field_value OWS ")"
 
-#define field_vchar VCHAR obs_text
-#define field_content "(?:[" field_vchar "](?:[ \\t]++[" field_vchar"])?)"
-#define obs_fold "(?:" CRLF "(?:[ \\t])++)"
-#define field_value "(?'field_value'(?:" field_content "|" obs_fold ")*)"
-#define header_field "(?:" field_name ":" OWS field_value OWS ")"
+#define http_message "(?:" start_line CRLF "(?:" field_line CRLF ")*" CRLF "(?'message_body'.*)?)"
+#define header_pattern "(?:" field_line CRLF ")"
 
-#define http_message "(?:" start_line "(?:" header_field CRLF ")*" CRLF "(?'message_body'.*))"
-#define header_pattern "(?:" header_field CRLF ")"
+#define debug_message "(?:" start_line CRLF ")"
 #endif
 
 PCRE2_SPTR http_message_pattern = (PCRE2_SPTR) http_message;
@@ -113,7 +114,7 @@ uint32_t http_header_name_count;
 
 void write_to_file_pattern(){
     FILE* f = fopen("pattern.txt", "w");
-    fprintf(f, "%s", http_header_pattern);
+    fprintf(f, "%s", header_pattern);
     fclose(f);
 }
 
@@ -172,6 +173,8 @@ int http_parser_init() {
         pcre2_code_free(http_message_code);
         return errornumber;
     }
+
+    return 0;
 }
 
 int http_parser_parse(char* buf, size_t length, http_request* request_data)
@@ -208,7 +211,7 @@ int http_parser_parse(char* buf, size_t length, http_request* request_data)
     request_data->body = (char*)buffer;
     request_data->body_length = buflen;
 
-    int offset = get_substring_length(message_match_data, (PCRE2_SPTR)"start_line");
+    int offset = get_substring_length(message_match_data, (PCRE2_SPTR)"start_line") + 2;
     int data_offset = length - buflen;
 
     uint32_t number_of_headers = 0;
